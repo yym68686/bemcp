@@ -1,7 +1,7 @@
 [project]
-name = "mcp-test"
+name = "bemcp"
 version = "0.1.1"
-description = "Add your description here"
+description = "A MCP Manager for LLM"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
