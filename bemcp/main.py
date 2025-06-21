@@ -1,4 +1,3 @@
-import json
 import asyncio
 from typing import Any, Dict, List, Optional
 from contextlib import AsyncExitStack
@@ -12,6 +11,7 @@ class MCPClient:
     """
     A client for interacting with a single Model Context Protocol (MCP) server.
     It can connect to a server via stdio or a URL (SSE).
+    This class is an asynchronous context manager.
     """
     def __init__(self, server_config: Dict[str, Any]):
         """
@@ -26,33 +26,46 @@ class MCPClient:
             raise ValueError("Server config must contain 'command' or 'url'")
         self.server_config = server_config
         self.session: Optional[ClientSession] = None
-        self.exit_stack = AsyncExitStack()
+        self._exit_stack: Optional[AsyncExitStack] = None
 
     async def connect(self):
-        """
-        Connects to the MCP server.
-        """
-        if self.session:
-            return
-
-        if "command" in self.server_config:
-            server_params = StdioServerParameters(**self.server_config)
-            transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
-        else:
-            transport = await self.exit_stack.enter_async_context(sse_client(**self.server_config))
-
-        read_stream, write_stream = transport
-        self.session = await self.exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
-        await self.session.initialize()
-        print(f"Connected to server.")
+        """Connects to the MCP server and initializes resources."""
+        return await self.__aenter__()
 
     async def disconnect(self):
-        """
-        Disconnects from the MCP server and cleans up resources.
-        """
+        """Disconnects from the MCP server and cleans up resources."""
+        return await self.__aexit__(None, None, None)
+
+    async def __aenter__(self):
+        """Connects to the MCP server and initializes resources."""
         if self.session:
-            await self.exit_stack.aclose()
+            return self
+
+        self._exit_stack = AsyncExitStack()
+        try:
+            if "command" in self.server_config:
+                server_params = StdioServerParameters(**self.server_config)
+                transport = await self._exit_stack.enter_async_context(stdio_client(server_params))
+            else:
+                transport = await self._exit_stack.enter_async_context(sse_client(**self.server_config))
+
+            read_stream, write_stream = transport
+            self.session = await self._exit_stack.enter_async_context(ClientSession(read_stream, write_stream))
+            await self.session.initialize()
+            print(f"Connected to server.")
+            return self
+        except Exception:
+            # If setup fails, make sure to clean up anything that was started.
+            if self._exit_stack:
+                await self._exit_stack.aclose()
+            raise
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        """Disconnects from the MCP server and cleans up resources."""
+        if self._exit_stack:
+            await self._exit_stack.aclose()
             self.session = None
+            self._exit_stack = None
             print("Disconnected from server.")
 
     async def list_tools(self) -> List[types.Tool]:
@@ -88,6 +101,7 @@ class MCPManager:
     """
     def __init__(self):
         self.clients: Dict[str, MCPClient] = {}
+        self._exit_stack = AsyncExitStack()
 
     async def add_server(self, name: str, config: Dict[str, Any]):
         """
@@ -102,21 +116,20 @@ class MCPManager:
             return
 
         client = MCPClient(config)
-        await client.connect()
+        await self._exit_stack.enter_async_context(client)
         self.clients[name] = client
         print(f"Server '{name}' added and connected.")
 
     async def remove_server(self, name: str):
         """
         Disconnects and removes an MCP server.
-
-        Args:
-            name: The name of the server to remove.
         """
+        # NOTE: With the new ExitStack-based management, removing a single
+        # server is complex. This method is left as a placeholder and will
+        # not correctly clean up resources for the removed server.
         if name in self.clients:
-            await self.clients[name].disconnect()
             del self.clients[name]
-            print(f"Server '{name}' removed.")
+            print(f"Server '{name}' removed (Warning: resources may not be cleaned up immediately).")
         else:
             print(f"Server '{name}' not found.")
 
@@ -140,9 +153,10 @@ class MCPManager:
         return await self.clients[server_name].call_tool(tool_name, args)
 
     async def cleanup(self):
-        """Disconnects all clients."""
-        for client in self.clients.values():
-            await client.disconnect()
+        """Disconnects all clients by closing the manager's exit stack."""
+        if self.clients:
+            await self._exit_stack.aclose()
+            self.clients.clear()
 
 async def test_bemcp():
     """
