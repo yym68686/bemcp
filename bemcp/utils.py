@@ -24,7 +24,9 @@ def convert_tool_format(tool: types.Tool) -> Dict[str, Any]:
         "function": {
             "name": tool.name,
             "description": tool.description,
-            "parameters": tool.inputSchema
         }
     }
+    if getattr(tool, 'inputSchema', None) and getattr(tool.inputSchema, 'properties', None):
+        converted_tool["function"]["parameters"] = tool.inputSchema
+
     return converted_tool
