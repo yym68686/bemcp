@@ -1,6 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 from contextlib import AsyncExitStack
+from bemcp.decorator import async_retry, reconnect_on_connection_error
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -36,6 +37,7 @@ class MCPClient:
         """Disconnects from the MCP server and cleans up resources."""
         return await self.__aexit__(None, None, None)
 
+    @async_retry(max_retries=2)
     async def __aenter__(self):
         """Connects to the MCP server and initializes resources."""
         if self.session:
@@ -68,6 +70,7 @@ class MCPClient:
             self._exit_stack = None
             print("Disconnected from server.")
 
+    @reconnect_on_connection_error
     async def list_tools(self) -> List[types.Tool]:
         """Lists available tools from the server."""
         if not self.session:
@@ -75,12 +78,14 @@ class MCPClient:
         response = await self.session.list_tools()
         return response.tools
 
+    @reconnect_on_connection_error
     async def call_tool(self, name: str, args: Dict[str, Any]) -> types.CallToolResult:
         """Calls a tool on the server."""
         if not self.session:
             raise ConnectionError("Not connected to any server.")
         return await self.session.call_tool(name, args)
 
+    @reconnect_on_connection_error
     async def list_resources(self) -> List[types.Resource]:
         """Lists available resources from the server."""
         if not self.session:
@@ -88,6 +93,7 @@ class MCPClient:
         response = await self.session.list_resources()
         return response.resources
 
+    @reconnect_on_connection_error
     async def read_resource(self, uri: str) -> types.ReadResourceResult:
         """Reads a resource from the server."""
         if not self.session:

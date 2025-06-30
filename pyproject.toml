@@ -1,6 +1,6 @@
 [project]
 name = "bemcp"
-version = "0.1.2"
+version = "0.1.3"
 description = "A MCP Manager for LLM"
 readme = "README.md"
 requires-python = ">=3.13"
