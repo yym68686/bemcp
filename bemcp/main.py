@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 from contextlib import AsyncExitStack
-from bemcp.decorator import async_retry, reconnect_on_connection_error
+from .decorator import async_retry, reconnect_on_connection_error
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
